@@ -1,0 +1,408 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <link rel="icon" href="assets/img/Bunny.png" type="image/png">
+  <title>Easter Bunny Tracker</title>
+
+  <meta name="description"
+    content="Track the Easter Bunny live as he delivers eggs and baskets around the world. See his latest location, speed, and more!">
+  <meta name="keywords" content="Easter Bunny Tracker, Easter Bunny, live tracker, Easter, bunny tracker">
+  <meta property="og:title" content="Easter Bunny Tracker">
+  <meta property="og:description"
+    content="Track the Easter Bunny live as he delivers eggs and baskets around the world. See his latest location, speed, and more!">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://www.easterbunnytracker.org/">
+  <meta property="og:image" content="https://easterbunnytracker.org/assets/img/Bunny.png">
+  <meta property="og:image:width" content="200">
+  <meta property="og:image:height" content="200">
+
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Easter Bunny Tracker">
+  <meta name="twitter:description"
+    content="Track the Easter Bunny live as he delivers eggs and baskets around the world. See his latest location, speed, and more!">
+  <meta name="twitter:image" content="https://easterbunnytracker.org/assets/img/Bunny.png">
+
+  <!-- Mapbox GL JS CSS -->
+  <link href="https://api.mapbox.com/mapbox-gl-js/v3.0.1/mapbox-gl.css" rel="stylesheet" />
+
+  <!-- your styles -->
+  <link rel="stylesheet" href="css/style.css" />
+
+  <script defer src="https://cloud.umami.is/script.js" data-website-id="9ff0fdd6-ec09-4479-8b1d-5b4b579375ea"></script>
+
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@600;700;800&display=swap" rel="stylesheet" />
+</head>
+
+<body>
+  <!-- Loading overlay: shown on every open until the tracker is ready to use. -->
+  <div id="loadingOverlay" class="loading-overlay">
+    <div class="loading-content">
+      <img src="assets/img/Bunny.png" alt="" class="loading-bunny" />
+      <div class="loading-text">Loading tracker&hellip;</div>
+      <div class="loading-bar-track"><div id="loadingBarFill" class="loading-bar-fill"></div></div>
+    </div>
+  </div>
+
+  <div id="cesiumContainer"></div>
+
+  <!-- Top Stats Bar -->
+  <div id="hud" aria-live="polite">
+    <div class="hud-title-row">
+      <div class="hud-title">Easter Bunny Tracker</div>
+      <button id="hudToggleBtn" class="hud-toggle" type="button" aria-label="Collapse stats" aria-expanded="true">▲</button>
+    </div>
+    <div id="hudStats" class="hud-stats">
+    <div class="hud-row"><span>Status:</span><span id="statStatus">Loading…</span></div>
+    <div class="hud-row"><span>Arriving in:</span><span id="statEta">-</span></div>
+    <div class="hud-row"><span>Delivering for:</span><span id="statStopRemaining">-</span></div>
+    <div class="hud-row"><span>Easter Bunny will arrive at your location in about</span><span
+        id="statDuration">Loading...</span></div>
+    <div class="hud-row"><span>Last spotted:</span><span id="statLast">-</span></div>
+    <div class="hud-row"><span>Traveling speed:</span><span id="statSpeed">-</span></div>
+    <div class="hud-row"><span>Eggs delivered:</span><span id="statEggs">-</span></div>
+    <div class="hud-row"><span>Carrots eaten:</span><span id="statCarrots">-</span></div>
+    </div>
+  </div>
+
+  <!-- Local-dev only: ?headless=1 on localhost drives rAF from a timer so the
+       page keeps running in hidden/automated tabs. Never active in production. -->
+  <script>
+    if ((location.hostname === "localhost" || location.hostname === "127.0.0.1") &&
+      new URLSearchParams(location.search).has("headless")) {
+      window.requestAnimationFrame = function (cb) { return setTimeout(function () { cb(performance.now()); }, 33); };
+      window.cancelAnimationFrame = function (id) { clearTimeout(id); };
+    }
+  </script>
+
+  <!-- Three.js + GLTFLoader (for 3D bunny model) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+
+  <!-- Mapbox GL JS script -->
+  <script src="https://api.mapbox.com/mapbox-gl-js/v3.0.1/mapbox-gl.js"></script>
+  <script>
+    document.addEventListener('DOMContentLoaded', function () {
+      var btn = document.getElementById('hudToggleBtn');
+      var stats = document.getElementById('hudStats');
+      if (btn && stats) {
+        btn.addEventListener('click', function () {
+          var expanded = btn.getAttribute('aria-expanded') === 'true';
+          btn.setAttribute('aria-expanded', String(!expanded));
+          stats.classList.toggle('is-collapsed', expanded);
+        });
+      }
+    });
+  </script>
+  <script src="js/secrets.js" defer></script>
+  <script src="js/config.js" defer></script>
+  <script src="js/serverTime.js" defer></script>
+  <script src="js/utils.js" defer></script>
+  <script src="js/data.js" defer></script>
+  <script src="js/tracker.js" defer></script>
+  <script src="js/viewer.js" defer></script>
+  <script src="js/bunny3d.js" defer></script>
+  <script src="js/main.js" defer></script>
+
+  <!-- HELP button (bottom-left) -->
+  <button id="helpBtn" type="button" aria-haspopup="dialog" aria-controls="helpOverlay">
+    HELP
+  </button>
+
+  <!-- Help overlay / modal -->
+  <div id="helpOverlay" class="help-overlay" role="dialog" aria-modal="true" aria-hidden="true">
+    <div class="help-backdrop" data-help-close="1"></div>
+
+    <div class="help-modal" role="document">
+      <div class="help-header">
+        <div class="help-title">Easter Bunny Tracker - Help Section</div>
+        <button id="helpCloseBtn" class="help-close" type="button" aria-label="Close help">✕</button>
+      </div>
+
+      <div class="help-body">
+        <!-- Left-side vertical tabs -->
+        <nav class="help-tabs" aria-label="Help sections">
+          <button class="help-tab is-active" type="button" data-tab="about">About</button>
+          <button class="help-tab" type="button" data-tab="settings">Settings</button>
+          <button class="help-tab" type="button" data-tab="tos">Terms of Service</button>
+          <button class="help-tab" type="button" data-tab="privacy">Privacy Policy</button>
+          <button class="help-tab" type="button" data-tab="faq">FAQ</button>
+          <button class="help-tab" type="button" data-tab="donate">Donate</button>
+          <button class="help-tab" type="button" data-tab="contact">Contact</button>
+
+          <div class="help-version">v2.0.0</div>
+        </nav>
+
+        <!-- Right-side content area -->
+        <section class="help-content">
+          <div class="help-pane is-active" data-pane="about">
+            <h4 class="help-pane-title">About</h4>
+
+            <p>
+              The <strong>Easter Bunny Tracker</strong> is an interactive, real-time tracking experience that follows
+              the Easter Bunny's journey as he prepares for and delivers Easter baskets around the world. Designed
+              to be informative, fun, and easy to follow, the tracker provides live updates, location progress,
+              and journey statistics during the Easter season.
+            </p>
+
+            <p>
+              Development of the Easter Bunny Tracker began in <strong>2025</strong>, with the goal of creating a
+              modern,
+              map-based tracker inspired by traditional holiday tracking experiences. After a year of development,
+              testing, and refinement, <strong>2026</strong> marked the tracker's first official year of live Easter
+              Bunny tracking.
+            </p>
+
+            <p>
+              The tracker is built to balance realism with imagination, offering users a way to follow the Bunny's
+              progress without revealing too much too early. Certain details are intentionally introduced over time
+              to preserve the excitement and mystery of the journey.
+            </p>
+
+            <p class="help-note">
+              The Easter Bunny Tracker is intended for entertainment and seasonal enjoyment and is updated annually
+              to improve accuracy, performance, and presentation.
+            </p>
+            
+            <hr>
+            <div class="help-credits">
+              <span>IP address data powered by <a href="https://ipinfo.io">IPinfo</a></span>
+              <span>3D Bunny file created by <a href="https://santa.holidayflightpath.com/">Holiday Flight Path</a></span>
+              <span><a href="https://github.com/Roblify/Easter-Bunny-Tracker">Open Source Code on GitHub</a></span>
+            </div>
+          </div>
+          <div class="help-pane" data-pane="settings">
+            <h4 class="help-pane-title">Settings</h4>
+            <p class="help-note" style="margin-top:0;">All changes are saved automatically.</p>
+
+            <!-- ── MAP ──────────────────────────────────────────────── -->
+            <h5 class="settings-section-title">🗺️ Map</h5>
+
+            <p>Enable 3D Tracking to display the Easter Bunny as a 3D model on a 3D globe. When zoomed out far enough, the model automatically switches to the 2D sprite. Disabling 3D Tracking uses a flat 2D map with the classic Bunny image.</p>
+
+            <button id="tracking3dBtn" type="button" class="settings-button" aria-pressed="false">
+              3D Tracking: Off
+            </button>
+
+            <p class="help-note">When 3D Tracking is enabled, the globe is rendered in 3D. When disabled, the map is always flat 2D.</p>
+
+            <p style="margin-top:14px;">Switch between the Standard and Satellite map style. | <strong>If Standard style does not load for you, then switch to Satellite style.</strong></p>
+
+            <button id="mapStyleBtn" type="button" class="settings-button" aria-pressed="true">
+              Map Style: Satellite
+            </button>
+
+            <hr>
+
+            <!-- ── AUDIO ─────────────────────────────────────────────── -->
+            <h5 class="settings-section-title">🎵 Audio</h5>
+
+            <p>Toggle background music. Some browsers may require a page interaction before audio can start.</p>
+
+            <button id="musicToggleBtn" type="button" class="settings-button" aria-pressed="true">
+              Music: On
+            </button>
+
+            <hr>
+
+            <!-- ── HUD ───────────────────────────────────────────────── -->
+            <h5 class="settings-section-title">📊 HUD</h5>
+
+            <p>Choose whether travel speed is shown in miles per hour or kilometres per hour.</p>
+
+            <button id="travelSpeedTypeBtn" type="button" class="settings-button" aria-pressed="true">
+              Speed Unit: MPH
+            </button>
+
+            <p style="margin-top:14px;">
+              Streamer Mode hides the "Bunny arrives at your location in about…" estimate, preventing viewers of your
+              broadcast from inferring your location.
+            </p>
+
+            <button id="streamerModeBtn" type="button" class="settings-button" aria-pressed="false">
+              Streamer Mode: Disabled
+            </button>
+
+            <hr>
+
+            <!-- ── TRACKING ──────────────────────────────────────────── -->
+            <h5 class="settings-section-title">📍 Tracking</h5>
+
+            <p>Toggle a hop animation on the Easter Bunny while traveling (2D only).</p>
+
+            <button id="bunnyHopBtn" type="button" class="settings-button" aria-pressed="false">
+              Bunny Hop Animation: Off
+            </button>
+
+            <p style="margin-top:14px;">Show a trail line along the route between visited locations.</p>
+
+            <button id="travelTrailsBtn" type="button" class="settings-button" aria-pressed="false">
+              Travel Trails: Off
+            </button>
+
+            <hr>
+
+            <!-- ── STAT VISIBILITY ───────────────────────────────────── -->
+            <h5 class="settings-section-title">👁️ Stat Visibility</h5>
+
+            <p>Choose which statistics are shown in the HUD panel.</p>
+
+            <div class="settings-toggles-grid">
+              <button id="toggleStatEggs" type="button" class="settings-button" aria-pressed="true">
+                Eggs Delivered: Shown
+              </button>
+              <button id="toggleStatCarrots" type="button" class="settings-button" aria-pressed="true">
+                Carrots Eaten: Shown
+              </button>
+              <button id="toggleStatArrival" type="button" class="settings-button" aria-pressed="true">
+                Arrival Estimate: Shown
+              </button>
+              <button id="toggleStatLast" type="button" class="settings-button" aria-pressed="true">
+                Last Spotted: Shown
+              </button>
+              <button id="toggleStatSpeed" type="button" class="settings-button" aria-pressed="true">
+                Traveling Speed: Shown
+              </button>
+            </div>
+          </div>
+          <div class="help-pane" data-pane="tos">
+            <h4 class="help-pane-title">Terms of Service</h4>
+
+            <p>
+              Read the full Terms of Service on a separate page.
+            </p>
+
+            <p>
+              <a class="help-link" href="https://easterbunnytracker.org/terms" target="_blank" rel="noopener">
+                Open Terms of Service →
+              </a>
+            </p>
+
+            <p class="help-note">
+              By using this website, you agree to the Terms of Service.
+            </p>
+          </div>
+          <div class="help-pane" data-pane="privacy">
+            <h4 class="help-pane-title">Privacy Policy</h4>
+
+            <p>
+              The full Privacy Policy is available on a separate page.
+            </p>
+
+            <p>
+              <a class="help-link" href="https://easterbunnytracker.org/privacy" target="_blank" rel="noopener">
+                Open Privacy Policy →
+              </a>
+            </p>
+
+            <p class="help-note">
+              This explains what information may be processed when you use the tracker.
+            </p>
+          </div>
+          <div class="help-pane" data-pane="faq">
+            <h4 class="help-pane-title">FAQ</h4>
+
+            <p>
+              Have questions about the tracker? Browse the Frequently Asked Questions page for answers about how the
+              tracker works, settings, streaming, privacy, and more.
+            </p>
+
+            <p>
+              <a class="help-link" href="https://easterbunnytracker.org/FAQ" target="_blank" rel="noopener">
+                Open FAQ →
+              </a>
+            </p>
+
+            <p class="help-note">
+              Covers topics including the Easter Bunny, using the tracker, streaming, technical questions, and privacy.
+            </p>
+          </div>
+          <div class="help-pane" data-pane="donate">
+            <h4 class="help-pane-title">Donate</h4>
+
+            <p>
+              Hey there. I am Roblify, the developer of the Easter Bunny Tracker website. This is a website I love and
+              have passion for, as it makes Easter more fun for everyone with the ability to track the Easter Bunny as
+              he is
+              delivering eggs around the globe. Maintaining this website, alongside you using the website to track
+              requires me to pay money to keep the website up and running. Donating through Ko-fi would be a great
+              "Thank you"
+              message to me personally, and your donation would make maintaining the website less of a financial
+              burden,
+              more than you realize. 
+            </p>
+
+            <!-- src is deferred: set from data-src the first time the Donate tab opens
+                 (see setHelpTab in main.js), so this third-party payment widget isn't
+                 loaded on every page view. -->
+            <iframe id="kofiframe" data-src="https://ko-fi.com/roblify/?hidefeed=true&widget=true&embed=true" style="border:none;width:100%;" height="712" title="roblify" loading="lazy"></iframe>
+
+            <p class="help-note">
+              Donations are optional and go directly to the developer.
+            </p>
+          </div>
+          <div class="help-pane" data-pane="contact">
+            <h4 class="help-pane-title">Contact</h4>
+
+            <p>
+              If you have any questions, concerns, or feedback regarding the Easter Bunny Tracker,
+              you're welcome to reach out directly.
+            </p>
+
+            <p>
+              <a class="help-link" href="mailto:support@easterbunnytracker.org">
+                Email: support@easterbunnytracker.org
+              </a>
+            </p>
+
+            <p class="help-note">
+              Please allow some time for a response.
+            </p>
+          </div>
+        </section>
+      </div>
+    </div>
+  </div>
+
+  <div id="cityPanel" class="city-panel" hidden>
+    <div id="cityTitle" class="city-panel-title">Current city info</div>
+
+    <div class="city-panel-row">
+      <span>Time at city:</span>
+      <span id="cityLocalTime">-</span>
+    </div>
+    <div class="city-panel-row">
+      <span>More info:</span>
+      <span id="cityWeather">-</span>
+    </div>
+    <div class="city-panel-row">
+      <span>Traveling direction:</span>
+      <span id="cityDirection">N/A</span>
+    </div>
+    <div class="city-panel-row">
+      <span>Population:</span>
+      <span id="cityPopulation">-</span>
+    </div>
+    <div class="city-panel-row">
+      <span>Elevation:</span>
+      <span id="cityElevation">-</span>
+    </div>
+    <hr>
+    <footer>Note: The information listed here may not always be accurate.</footer>
+  </div>
+
+  <!-- City info toggle - hidden during countdown, shown once journey begins -->
+  <button id="cityInfoToggleBtn" type="button" aria-pressed="true" title="Show/hide city info panel" hidden>
+    🏙️ Hide City Info
+  </button>
+
+  <button id="lockBtn" type="button" aria-pressed="true" title="Unlock camera">
+    🔓 Unlock Camera
+  </button>
+
+</body>
+
+</html>

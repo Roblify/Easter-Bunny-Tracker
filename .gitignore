@@ -1,0 +1,48 @@
+# =============================================================================
+#  Easter Bunny Tracker  -  .gitignore
+# =============================================================================
+
+# -- Secrets ------------------------------------------------------------------
+# Real API tokens live here. secrets.example.js is the committed template.
+js/secrets.js
+.env
+.env.*
+!.env.example
+
+# -- Dependencies & build output ----------------------------------------------
+node_modules/
+dist/
+*.log
+
+# -- Local tooling / editor config --------------------------------------------
+.claude/
+.vscode/
+.idea/
+
+# -- OS cruft -----------------------------------------------------------------
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# -- Backups & scratch --------------------------------------------------------
+backup-pre-3d-rework/
+DELETETHIS.json
+data/DELETETHIS.json
+*.bak
+
+# -- Large reference data (not needed to run the site) ------------------------
+# ~7.8 MB GeoNames dump used only by the route tooling in tools/.
+# Download it from https://download.geonames.org/export/dump/cities15000.zip
+data/cities15000.txt
+
+# -- Private infrastructure ---------------------------------------------------
+# Your admin-auth Cloudflare Worker backend. Remove this line if you want to
+# publish it (it contains no secrets — the password hash is a Wrangler secret).
+workers/
+
+# -- Scratch / local route data -----------------------------------------------
+# data/route.json is the main route and IS published. These are local-only:
+#   route-testing.json  - local test route (kept out of the public repo)
+#   updated-route.json  - output of tools/refurbish.py (review, then rename)
+data/route-testing.json
+data/updated-route.json
