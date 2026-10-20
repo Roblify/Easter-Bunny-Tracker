@@ -248,7 +248,16 @@ The endpoint must return the current UTC time in one of these formats:
 | Unix timestamp (seconds or milliseconds) | `1775280000` |
 
 A [Cloudflare Worker](https://workers.cloudflare.com/) (free tier) is a simple way
-to host this:
+to host this. The full walkthrough below takes you from nothing to a working
+endpoint; any host that can serve the response formats above works just as well.
+
+### Option A — Deploy with the Cloudflare dashboard (no tooling)
+
+1. Create a free account at [dash.cloudflare.com](https://dash.cloudflare.com/).
+2. Go to **Workers & Pages → Create → Create Worker**, give it a name
+   (e.g. `eb-timer`), and click **Deploy**.
+3. Click **Edit code**, replace the default code with the Worker below, and
+   click **Deploy** again:
 
 ```js
 export default {
@@ -271,9 +280,60 @@ export default {
 };
 ```
 
-Deploy the Worker, then update `TIMER_API_URL` in `js/config.js` to point to it.
+4. Your Worker is now live at a URL like `https://eb-timer.<your-subdomain>.workers.dev`.
+   The time endpoint is that URL plus `/time`.
 
-> 💡 To restrict the API to your domain only, check the `Origin` header and return a `403` for unauthorized origins.
+### Option B — Deploy with Wrangler (CLI)
+
+```bash
+# 1. Install the Cloudflare CLI (or use `npx wrangler ...` without installing)
+npm install -g wrangler
+
+# 2. Log in to your Cloudflare account
+wrangler login
+
+# 3. Scaffold a Worker, paste the code above into src/index.js
+wrangler init eb-timer
+cd eb-timer
+
+# 4. Deploy
+wrangler deploy
+```
+
+Wrangler prints the deployed URL (e.g. `https://eb-timer.<your-subdomain>.workers.dev`);
+the endpoint is that URL + `/time`.
+
+### Verify the endpoint
+
+```bash
+curl https://eb-timer.<your-subdomain>.workers.dev/time
+# -> 10/20/2026 18:42:07   (current UTC time)
+```
+
+### Point the tracker at it
+
+Update `TIMER_API_URL` in [`js/config.js`](js/config.js) to your `/time` endpoint:
+
+```js
+const TIMER_API_URL = "https://eb-timer.<your-subdomain>.workers.dev/time";
+```
+
+Reload the tracker and check the browser console — you should see a
+`[serverTime] Synced. Offset: … ms` message. If the endpoint is unreachable, the
+tracker logs a warning and falls back to the device clock.
+
+### (Optional) Use your own domain
+
+In the Cloudflare dashboard, open the Worker → **Settings → Domains & Routes** and
+add a **Custom Domain** (e.g. `api.yourdomain.com`) or a **Route**
+(e.g. `api.yourdomain.com/time*`). Then set `TIMER_API_URL` to the matching URL.
+This requires the domain to be managed in your Cloudflare account.
+
+> 💡 **Lock it to your own site.** The Worker above sends
+> `Access-Control-Allow-Origin: *`, which lets any site call it. To restrict it to
+> your domain, read the request's `Origin` header and only return the
+> `Access-Control-Allow-Origin` header for origins you allow (returning a `403`
+> otherwise) — the same pattern the tracker uses for its other endpoints.
 
 ---
 
